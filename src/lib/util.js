@@ -5,7 +5,7 @@ function cmp(a, b) {
   return a < b ? -1 : 1;
 }
 
-export function sorted(iterable, key = null) {
+function sorted(iterable, key = null) {
   let func;
   if (key === null) {
     func = x => x;
@@ -28,7 +28,7 @@ export function sorted(iterable, key = null) {
   return result;
 }
 
-export function permutations(things, cb) {
+function permutations(things, cb) {
   const tmp = Array.from(things);
   const len = tmp.length;
 
@@ -50,3 +50,5 @@ export function permutations(things, cb) {
   }
   return permute(0);
 }
+
+export default { permutations, sorted };

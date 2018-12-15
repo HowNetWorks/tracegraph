@@ -1,464 +1,209 @@
-import { schemeSet2 } from "d3-scale-chromatic";
-import { sorted, permutations } from "./util";
+import * as d3 from "d3";
+import util from "./util";
+import calc from "./calc";
 
-function calcTTL(node, cache) {
-  if (cache.has(node)) {
-    return cache.get(node);
-  }
+function traceCurve() {
+  return function({ points, horizontal, smoothness }) {
+    const ctx = d3.path();
 
-  let ttl = 0;
-  node.hops.forEach(hop => {
-    ttl = Math.max(ttl, hop.ttl);
-  });
-  node.prev.forEach(prev => {
-    ttl = Math.max(calcTTL(prev, cache) + 1, ttl);
-  });
-  cache.set(node, ttl);
-  return ttl;
-}
-
-function isStart(node) {
-  return node.prev.size === 0;
-}
-
-function isEnd(node) {
-  return node.next.size === 0;
-}
-
-function nodeify(hops) {
-  const nodes = [];
-  const real = new Map();
-  const virtual = new Map();
-  const hopsWithNodes = hops.map(hop => {
-    const groups = hop.virtual ? virtual : real;
-    const grouping = hop.grouping;
-
-    let node;
-    if (groups.has(hop.grouping.key)) {
-      node = groups.get(hop.grouping.key);
-    } else {
-      node = {
-        virtual: hop.virtual,
-        grouping: grouping,
-        hops: [],
-        ttl: 0,
-        prev: new Set(),
-        next: new Set(),
-        traceIds: new Set()
-      };
-      nodes.push(node);
-      groups.set(hop.grouping.key, node);
-    }
-    node.traceIds.add(hop.traceId);
-
-    const hopWithNode = { ...hop, node };
-    node.hops.push(hopWithNode);
-    return hopWithNode;
-  });
-
-  const ttls = new Map();
-  hopsWithNodes.forEach(hop => {
-    if (!ttls.has(hop.traceId)) {
-      ttls.set(hop.traceId, new Map());
-    }
-    ttls.get(hop.traceId).set(hop.ttl, hop);
-  });
-  hopsWithNodes.forEach(hop => {
-    const prevHop = ttls.get(hop.traceId).get(hop.ttl - 1);
-    if (prevHop) {
-      hop.node.prev.add(prevHop.node);
-      prevHop.node.next.add(hop.node);
-    }
-  });
-
-  const cache = new Map();
-  nodes.forEach(node => {
-    node.ttl = calcTTL(node, cache);
-  });
-  return [nodes, hopsWithNodes];
-}
-
-function collectTraceIds(nodes) {
-  const result = new Set();
-  nodes.forEach(node => {
-    node.traceIds.forEach(traceId => result.add(traceId));
-  });
-  return result;
-}
-
-function rankedNodes(traceRanks, nodes) {
-  const ranks = new Map();
-  nodes.forEach(node => {
-    let rank = Infinity;
-    node.traceIds.forEach(traceId => {
-      rank = Math.min(traceRanks.get(traceId), rank);
-    });
-    ranks.set(node, rank);
-  });
-  return sorted(nodes, node => ranks.get(node));
-}
-
-function rankTraceIds(traceRanks, nodes, allowedTraces) {
-  const result = new Map();
-  rankedNodes(traceRanks, nodes).forEach(node => {
-    const allowedHops = node.hops.filter(hop => allowedTraces.has(hop.traceId));
-    sorted(allowedHops, hop => traceRanks.get(hop.traceId)).forEach(hop => {
-      result.set(hop.traceId, result.size);
-    });
-  });
-  return result;
-}
-
-function drawTrace(ctx, points, smoothness) {
-  points.forEach(([x, y], index) => {
-    if (index === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      const [x0, y0] = points[index - 1];
-      const dy = y - y0;
-      ctx.bezierCurveTo(x0, y0 + dy * smoothness, x, y - dy * smoothness, x, y);
-    }
-  });
-}
-
-function virtualize(hopsWithNodes) {
-  const traces = new Map();
-  hopsWithNodes.forEach(hop => {
-    if (!traces.has(hop.traceId)) {
-      traces.set(hop.traceId, [hop]);
-    } else {
-      traces.get(hop.traceId).push(hop);
-    }
-  });
-
-  const newHops = [];
-  traces.forEach(hops => {
-    const sortedHops = sorted(hops, "ttl");
-    sortedHops.forEach((hop, index) => {
-      newHops.push({
-        ...hop,
-        ttl: hop.node.ttl,
-        virtual: false
-      });
+    const len = points.length;
+    for (let index = 0; index < len; index++) {
+      const [x, y] = points[index];
       if (index === 0) {
-        return;
+        ctx.moveTo(x, y);
+      } else {
+        const [x0, y0] = points[index - 1];
+        const dx = horizontal ? x - x0 : 0;
+        const dy = horizontal ? 0 : y - y0;
+        ctx.bezierCurveTo(
+          x0 + dx * smoothness,
+          y0 + dy * smoothness,
+          x - dx * smoothness,
+          y - dy * smoothness,
+          x,
+          y
+        );
       }
-      const prevHop = sortedHops[index - 1];
-      for (let i = prevHop.node.ttl + 1; i < hop.node.ttl; i++) {
-        newHops.push({
-          ...prevHop,
-          ttl: i,
-          virtual: true,
-          grouping: {
-            key: `${i}-${prevHop.grouping.key}`,
-            mount: null
-          }
-        });
-      }
-    });
-  });
-  return newHops;
+    }
+
+    return "" + ctx;
+  };
 }
 
-function uniques(hops) {
-  const traces = new Map();
-  hops.forEach(hop => {
-    if (!traces.has(hop.traceId)) {
-      traces.set(hop.traceId, [hop]);
-    } else {
-      traces.get(hop.traceId).push(hop);
-    }
+function nodeGradient(node) {
+  const { horizontal, traceStops } = node;
+
+  const start = Math.min(...traceStops.map(s => s.start));
+  const end = Math.max(...traceStops.map(s => s.end));
+
+  const stops = [];
+  traceStops.forEach(s => {
+    stops.push(
+      {
+        traceIndex: s.traceIndex,
+        offset: (s.start - start) / (end - start)
+      },
+      {
+        traceIndex: s.traceIndex,
+        offset: (s.end - start) / (end - start)
+      }
+    );
   });
 
-  const newHops = [];
-  traces.forEach(trace => {
-    const counts = new Map();
-    sorted(trace, "ttl").forEach(hop => {
-      const grouping = hop.grouping;
-      const count = counts.get(grouping.key) || 0;
-      counts.set(grouping.key, count + 1);
-      newHops.push({
-        ...hop,
-        grouping: {
-          ...grouping,
-          key: `${count}-${grouping.key}`
-        }
-      });
-    });
-  });
-  return newHops;
+  return {
+    gradientUnits: "userSpaceOnUse",
+    x1: horizontal ? 0 : start,
+    y1: horizontal ? start : 0,
+    x2: horizontal ? 0 : end,
+    y2: horizontal ? end : 0,
+    stops: util.sorted(stops, "offset")
+  };
 }
 
-const TRACE_LINE_WIDTH = 2.25;
-const TRACE_LINE_SMOOTHNESS = 0.5;
-const TRACE_MARGIN = 1;
-const TTL_MARGIN_Y = 20;
+function genUID() {
+  const base = window.location.href.replace(/#.*/, "");
 
-function update(element, canvas, ctx, width, height, origHops) {
-  const traceWidth = TRACE_LINE_WIDTH + 2 * TRACE_MARGIN;
-
-  const uniqHops = uniques(origHops).map(hop => {
-    return {
-      ...hop,
-      virtual: false,
-      node: true
-    };
-  });
-  const [, hopsWithNodes] = nodeify(uniqHops);
-  const [nodes, hops] = nodeify(virtualize(hopsWithNodes));
-
-  const traces = new Map();
-  hops.forEach(hop => {
-    if (!traces.has(hop.traceId)) {
-      traces.set(hop.traceId, [hop]);
-    } else {
-      traces.get(hop.traceId).push(hop);
-    }
-  });
-
-  const ttls = new Map();
-  nodes.forEach(node => {
-    const ttl = node.ttl;
-    if (!ttls.has(ttl)) {
-      ttls.set(ttl, [node]);
-    } else {
-      ttls.get(ttl).push(node);
-    }
-  });
-
-  let bestTraceRanks = [];
-  let minCrossings = Infinity;
-  // Sort traces.keys() to make the order the permutations get iterated through
-  // deterministic (assuming sorted(...) is a stable sort).
-  permutations(sorted(traces.keys()), traceOrder => {
-    const traceRanks = new Map();
-    traceOrder.forEach((traceId, rank) => {
-      traceRanks.set(traceId, rank);
-    });
-
-    let crossings = 0;
-    ttls.forEach(_right => {
-      const right = _right.filter(node => !isEnd(node));
-      const left = new Set();
-      right.forEach(node => {
-        node.prev.forEach(prev => {
-          if (!isStart(prev)) {
-            left.add(prev);
-          }
-        });
-      });
-      const leftIds = collectTraceIds(left);
-      const rightIds = collectTraceIds(right);
-      const leftRanks = rankTraceIds(traceRanks, left, rightIds);
-      const rightRanks = rankTraceIds(traceRanks, right, leftIds);
-      leftRanks.forEach((rank, traceId) => {
-        crossings += Math.max(rightRanks.get(traceId) - rank, 0);
-      });
-    });
-
-    if (crossings < minCrossings) {
-      minCrossings = crossings;
-      bestTraceRanks = traceRanks;
-    }
-  });
-
-  const orders = new Map();
-  nodes.forEach(node => {
-    const hops = new Map();
-
-    let ranks = bestTraceRanks;
-    if (isStart(node)) {
-      ranks = new Map();
-
-      let count = 0;
-      rankedNodes(bestTraceRanks, node.next).forEach(next => {
-        sorted(next.hops, hop => bestTraceRanks.get(hop.traceId)).forEach(
-          hop => {
-            if (!ranks.has(hop.traceId)) {
-              ranks.set(hop.traceId, count);
-              count += 1;
-            }
-          }
-        );
-      });
-      bestTraceRanks.forEach((rank, traceId) => {
-        if (!ranks.has(traceId)) {
-          ranks.set(traceId, rank + count);
+  for (;;) {
+    const id = `uid-${Math.random()}`;
+    if (!document.getElementById(id)) {
+      return {
+        id,
+        toString() {
+          return `url(${base}#${id})`;
         }
-      });
-    } else if (isEnd(node)) {
-      ranks = new Map();
-
-      let count = 0;
-      rankedNodes(bestTraceRanks, node.prev).forEach(prev => {
-        sorted(prev.hops, hop => bestTraceRanks.get(hop.traceId)).forEach(
-          hop => {
-            if (!ranks.has(hop.traceId)) {
-              ranks.set(hop.traceId, count);
-              count += 1;
-            }
-          }
-        );
-      });
-      bestTraceRanks.forEach((rank, traceId) => {
-        if (!ranks.has(traceId)) {
-          ranks.set(traceId, rank + count);
-        }
-      });
+      };
     }
+  }
+}
 
-    sorted(node.hops, hop => ranks.get(hop.traceId)).forEach((hop, index) => {
-      hops.set(hop, index);
-    });
-    orders.set(node, hops);
+function verticalGraph(origTraces, options) {
+  const { traces, levels } = calc(origTraces, options);
+  const traceWidths = origTraces.map((trace, index) => {
+    return options.traceWidth(trace, index, origTraces);
   });
 
-  const nodeElements = [];
   const nodeMetrics = new Map();
-  ttls.forEach(nodes => {
-    rankedNodes(bestTraceRanks, nodes).forEach(node => {
-      let container;
-      if (node.grouping.mount) {
-        container = document.createElement("div");
-        container.style.position = "absolute";
-        container.style.marginLeft = "-10000px";
-        container.style.minWidth =
-          Math.ceil(traceWidth * node.hops.length) + "px";
-        container.style.top = "0";
-        container.style.left = "0";
-
-        const colors = sorted(node.hops, hop => orders.get(node).get(hop)).map(
-          hop => {
-            return {
-              color: schemeSet2[hop.traceId % schemeSet2.length],
-              width: traceWidth
-            };
-          }
-        );
-        const unmount = node.grouping.mount(container, colors);
-        nodeElements.push({ container, unmount });
-        element.appendChild(container);
-      }
-
-      nodeMetrics.set(node, {
-        element: container,
-
-        // Filled in later
+  levels.forEach(nodes => {
+    nodes.forEach(node => {
+      const nm = {
+        x: 0,
+        y: 0,
         width: 0,
         height: 0,
-        x: 0,
-        y: 0
-      });
+        traceWidth: node.hops.reduce(
+          (total, hop) => total + traceWidths[hop.traceIndex],
+          0
+        )
+      };
+      if (!node.virtual) {
+        const [width, height] = options.nodeSize({
+          hops: node.hops.map(hop => hop.origHop),
+          horizontal: Boolean(options.horizontal)
+        });
+        nm.width = width;
+        nm.height = height;
+      }
+      nm.width = Math.max(nm.width, nm.traceWidth);
+      nodeMetrics.set(node, nm);
     });
-  });
-
-  nodes.forEach(node => {
-    const nm = nodeMetrics.get(node);
-    if (!nm.element) {
-      return;
-    }
-    const rect = nm.element.getBoundingClientRect();
-    nm.width = rect.width;
-    nm.height = rect.height;
   });
 
   let maxNodeWidth = 0;
   nodeMetrics.forEach(nm => {
     maxNodeWidth = Math.max(nm.width, maxNodeWidth);
   });
-  ttls.forEach(nodes => {
-    const ranked = rankedNodes(bestTraceRanks, nodes);
-
+  const sortedTraceWidths = util.sorted(traceWidths);
+  levels.forEach(nodes => {
     let width = maxNodeWidth;
     if (nodes.length >= 2) {
-      const leeway = traceWidth * (traces.size - nodes.length + 1);
+      const leeway = sortedTraceWidths
+        .slice(nodes.length - 1)
+        .reduce((acc, cur) => acc + cur, 0);
       width = (maxNodeWidth + leeway) / 2;
     }
-    ranked.forEach((node, index) => {
-      nodeMetrics.get(node).x = (index - (ranked.length - 1) / 2) * width;
+    nodes.forEach((node, index) => {
+      nodeMetrics.get(node).x += (index - (nodes.length - 1) / 2) * width;
     });
 
     let overlaps = 0;
     let maxOverlaps = 0;
-    ranked.forEach(node => {
-      const nm = nodeMetrics.get(node);
-      if (!nm.element) {
+    nodes.forEach(node => {
+      if (node.virtual) {
         overlaps = 0;
       } else {
         overlaps += 1;
         maxOverlaps = Math.max(overlaps, maxOverlaps);
       }
     });
-    ranked.forEach((node, index) => {
+    nodes.forEach((node, index) => {
       let y = 0;
       if (maxOverlaps >= 2 && index % 2 === 0) {
-        const left =
-          index === 0 ? 0 : nodeMetrics.get(ranked[index - 1]).height;
+        const left = index === 0 ? 0 : nodeMetrics.get(nodes[index - 1]).height;
         const right =
-          index === ranked.length - 1
+          index === nodes.length - 1
             ? 0
-            : nodeMetrics.get(ranked[index + 1]).height;
-        y = Math.max(left, right);
+            : nodeMetrics.get(nodes[index + 1]).height;
+        y += Math.max(left, right);
       }
       nodeMetrics.get(node).y = y;
     });
   });
 
-  let left = Infinity;
-  let right = -Infinity;
-  ttls.forEach(nodes => {
+  const hopMetrics = new Map();
+  levels.forEach(nodes => {
     nodes.forEach(node => {
       const nm = nodeMetrics.get(node);
-      left = Math.min(left, nm.x - nm.width / 2);
-      right = Math.max(right, nm.x + nm.width / 2);
-    });
-  });
-  const totalWidth = right - left;
 
-  const hopMetrics = new Map();
-  traces.forEach(hops => {
-    hops.forEach(hop => {
-      const nm = nodeMetrics.get(hop.node);
-      const order = orders.get(hop.node).get(hop);
-      const count = hop.node.hops.length;
-      hopMetrics.set(hop, {
-        order: order,
-        count: count,
-        x: nm.x + traceWidth * (order - (count - 1) / 2),
-        top: 0,
-        bottom: 0
+      let traceOffset = 0;
+      node.hops.forEach(hop => {
+        const traceWidth = traceWidths[hop.traceIndex];
+        hopMetrics.set(hop, {
+          traceWidth,
+          traceOffset,
+          x: nm.x + traceOffset + traceWidth / 2 - nm.traceWidth / 2,
+          top: 0,
+          bottom: 0
+        });
+        traceOffset += traceWidth;
       });
     });
+  });
 
-    const sortedHops = sorted(hops, "ttl");
-    for (let i = 1; i < sortedHops.length; i++) {
-      const left = hopMetrics.get(sortedHops[i - 1]);
-      const right = hopMetrics.get(sortedHops[i]);
+  traces.forEach(trace => {
+    const hops = trace.hops;
+    for (let i = 1; i < hops.length; i++) {
+      const leftHop = hops[i - 1];
+      const left = hopMetrics.get(leftHop);
+      const right = hopMetrics.get(hops[i]);
+      const lnm = nodeMetrics.get(leftHop.node);
 
-      const dy = (3 / 2) * (1 - TRACE_LINE_SMOOTHNESS) * (2 * TTL_MARGIN_Y);
+      const dy =
+        (3 / 2) * (1 - options.traceSmoothness) * (2 * options.levelMargin);
       const dx = (3 / 2) * (right.x - left.x);
       const normalLen = Math.sqrt(dx * dx + dy * dy);
-      const offsetLen = (traceWidth * dx) / normalLen;
 
-      // Correction
-      const xfix = traceWidth - (traceWidth * dy) / normalLen;
-      const slope = dx !== 0 ? dy / dx : 0;
-      const yfix = slope * xfix;
+      let nudge = 0;
+      if (normalLen > 0) {
+        // Correction
+        const xfix = 1 - dy / normalLen;
+        const slope = dx !== 0 ? dy / dx : 0;
+        const offset = dx / normalLen - slope * xfix;
 
-      let nudge;
-      if (dx > 0) {
-        nudge = (left.count - left.order - 1) * (offsetLen - yfix);
-      } else {
-        nudge = -left.order * (offsetLen - yfix);
+        if (dx > 0) {
+          nudge =
+            (lnm.traceWidth - left.traceOffset - left.traceWidth) * offset;
+        } else {
+          nudge = -left.traceOffset * offset;
+        }
       }
       left.bottom = nudge;
       right.top = nudge;
     }
   });
 
+  const levelMetrics = new Map();
   let totalHeight = 0;
-  const ttlMetrics = new Map();
-  sorted(ttls, entry => entry[0]).forEach(([ttl, nodes]) => {
+  levels.forEach((nodes, level) => {
     let top = 0;
     nodes.forEach(node => {
       node.hops.forEach(hop => {
@@ -473,135 +218,176 @@ function update(element, canvas, ctx, width, height, origHops) {
       height = Math.max(height, nm.height + nm.y);
     });
 
-    ttlMetrics.set(ttl, {
+    levelMetrics.set(level, {
       top,
       height,
       y: totalHeight
     });
-    totalHeight += height + top + 2 * TTL_MARGIN_Y;
+    totalHeight += height + top + 2 * options.levelMargin;
   });
-  totalHeight -= 2 * TTL_MARGIN_Y;
 
-  if (width !== totalWidth || height !== totalHeight) {
-    resize(canvas, ctx, totalWidth, totalHeight);
-    height = totalHeight;
-    width = totalWidth;
-  }
+  const result = {
+    nodes: [],
+    traces: [],
+    extent: null
+  };
 
-  ctx.clearRect(0, 0, width, height);
-  ctx.save();
-  ctx.translate(width / 2, 0);
-  sorted(traces.keys(), traceId => bestTraceRanks.get(traceId)).forEach(
-    traceId => {
-      const sortedHops = sorted(traces.get(traceId), "ttl");
+  traces.forEach((trace, traceIndex) => {
+    const sections = [];
 
-      const sections = [];
-      sortedHops.forEach((hop, index) => {
-        if (hop.virtual) {
+    const hops = trace.hops;
+    hops.forEach((hop, index) => {
+      if (hop.virtual) {
+        return;
+      }
+
+      let cut = index - 1;
+      while (cut >= 0 && hops[cut].virtual) {
+        cut--;
+      }
+      if (cut >= 0) {
+        sections.push({
+          hops: hops.slice(cut, index + 1),
+          defined: hops[cut].defined && hop.defined
+        });
+      }
+    });
+
+    const joinedSections = sections.splice(0, 1);
+    sections.forEach(section => {
+      const joined = joinedSections[joinedSections.length - 1];
+      if (Boolean(section.defined) === Boolean(joined.defined)) {
+        joined.hops.push(...section.hops.slice(1));
+      } else {
+        joinedSections.push(section);
+      }
+    });
+
+    const pointSections = joinedSections.map(({ hops, defined }) => {
+      const points = [];
+      hops.forEach((right, index) => {
+        const rhm = hopMetrics.get(right);
+        const rnm = nodeMetrics.get(right.node);
+        const rlm = levelMetrics.get(right.level);
+        if (index === 0) {
+          points.push([rhm.x, rlm.y + rlm.top + rnm.y + rnm.height / 2]);
           return;
         }
 
-        let cut = index - 1;
-        while (cut >= 0 && sortedHops[cut].virtual) {
-          cut--;
-        }
-        if (cut >= 0) {
-          sections.push({
-            hops: sortedHops.slice(cut, index + 1),
-            defined: sortedHops[cut].defined && hop.defined
-          });
-        }
-      });
+        const lhm = hopMetrics.get(hops[index - 1]);
+        const llm = levelMetrics.get(hops[index - 1].level);
+        const y = llm.y + llm.top + llm.height + lhm.bottom;
+        points.push([lhm.x, y]);
+        points.push([rhm.x, y + 2 * options.levelMargin]);
 
-      const joinedSections = sections.splice(0, 1);
-      sections.forEach(section => {
-        const joined = joinedSections[joinedSections.length - 1];
-        if (Boolean(section.defined) === Boolean(joined.defined)) {
-          joined.hops.push(...section.hops.slice(1));
-        } else {
-          joinedSections.push(section);
+        if (index === hops.length - 1) {
+          points.push([rhm.x, rlm.y + rlm.top + rnm.y + rnm.height / 2]);
         }
       });
+      return { points, defined };
+    });
 
-      const pointSections = joinedSections.map(({ hops, defined }) => {
-        const points = [];
-        hops.forEach((right, index) => {
-          const rhm = hopMetrics.get(right);
-          const rnm = nodeMetrics.get(right.node);
-          const rtm = ttlMetrics.get(right.node.ttl);
-          if (index === 0) {
-            points.push([rhm.x, rtm.y + rtm.top + rnm.y + rnm.height / 2]);
-            return;
-          }
-
-          const lhm = hopMetrics.get(hops[index - 1]);
-          const ltm = ttlMetrics.get(hops[index - 1].node.ttl);
-          const y = ltm.y + ltm.top + ltm.height + lhm.bottom;
-          points.push([lhm.x, y]);
-          points.push([rhm.x, y + 2 * TTL_MARGIN_Y]);
-
-          if (index === hops.length - 1) {
-            points.push([rhm.x, rtm.y + rtm.top + rnm.y + rnm.height / 2]);
-          }
-        });
-        return { points, defined };
+    pointSections.forEach(section => {
+      result.traces.push({
+        index: traceIndex,
+        width: traceWidths[traceIndex],
+        hops: trace.hops.map(hop => hop.origHop),
+        defined: section.defined,
+        points: section.points,
+        smoothness: options.traceSmoothness,
+        horizontal: Boolean(options.horizontal)
       });
-
-      ctx.save();
-      ctx.beginPath();
-      pointSections
-        .filter(section => !section.defined)
-        .forEach(section => {
-          drawTrace(ctx, section.points, TRACE_LINE_SMOOTHNESS);
-        });
-      ctx.setLineDash([4, 2]);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = schemeSet2[traceId % schemeSet2.length];
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.save();
-      ctx.beginPath();
-      pointSections
-        .filter(section => section.defined)
-        .forEach(section => {
-          drawTrace(ctx, section.points, TRACE_LINE_SMOOTHNESS);
-        });
-      ctx.lineWidth = TRACE_LINE_WIDTH + 2 * Math.min(TRACE_MARGIN, 0.75);
-      ctx.strokeStyle = "white";
-      ctx.stroke();
-      ctx.lineWidth = TRACE_LINE_WIDTH;
-      ctx.strokeStyle = schemeSet2[traceId % schemeSet2.length];
-      ctx.stroke();
-      ctx.restore();
-    }
-  );
-
-  nodes.forEach(node => {
-    const nm = nodeMetrics.get(node);
-    if (!nm.element) {
-      return;
-    }
-
-    const tm = ttlMetrics.get(node.ttl);
-    const x = nm.x + width / 2 - nm.width / 2;
-    const y = tm.y + tm.top + nm.y;
-    nm.element.style.transform = `translate(${x + 10000}px, ${y}px)`;
+    });
   });
-  ctx.restore();
-  return [width, height, nodeElements];
+
+  let left = levels.length === 0 ? 0 : Infinity;
+  let right = levels.length === 0 ? 0 : -Infinity;
+  let top = levels.length === 0 ? 0 : Infinity;
+  let bottom = levels.length === 0 ? 0 : -Infinity;
+  levels.forEach(nodes => {
+    nodes.forEach(node => {
+      const nm = nodeMetrics.get(node);
+      const lm = levelMetrics.get(node.level);
+      const x0 = nm.x - nm.width / 2;
+      const x1 = nm.x + nm.width / 2;
+      const y0 = lm.y + lm.top + nm.y;
+      const y1 = y0 + nm.height;
+
+      left = Math.min(x0, left);
+      right = Math.max(x1, right);
+      top = Math.min(y0, top);
+      bottom = Math.max(y1, bottom);
+      if (node.virtual) {
+        return;
+      }
+
+      let offset = (x0 + x1) / 2 - nm.traceWidth / 2;
+      const traceStops = node.hops.map(hop => {
+        const start = offset;
+        offset += traceWidths[hop.traceIndex];
+        return {
+          start,
+          end: offset,
+          traceIndex: hop.traceIndex
+        };
+      });
+      result.nodes.push({
+        x0,
+        y0,
+        x1,
+        y1,
+        hops: node.hops.map(hop => hop.origHop),
+        traceIndexes: node.hops.map(hop => hop.traceIndex),
+        traceStops,
+        horizontal: Boolean(options.horizontal)
+      });
+    });
+  });
+
+  result.extent = [[left, top], [right, bottom]];
+  return result;
 }
 
-function resize(canvas, ctx, width, height) {
-  const ratio = window.devicePixelRatio || 1;
+function flip(points) {
+  return points.map(([x, y]) => [y, x]);
+}
 
-  ctx.restore();
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  canvas.style.width = width + "px";
-  canvas.style.height = height + "px";
-  ctx.save();
-  ctx.scale(canvas.width / width, canvas.height / height);
+function tracegraph(hops, _options) {
+  const options = {
+    horizontal: false,
+    traceWidth: () => 2,
+    nodeSize: () => [20, 20],
+    nodeId: (hop, hopIndex, trace, traceIndex) => `${traceIndex}-${hopIndex}`,
+    hopDefined: () => true,
+    levelMargin: 20,
+    traceSmoothness: 0.33,
+    ..._options
+  };
+
+  if (options.horizontal) {
+    const nodeSize = options.nodeSize;
+    options.nodeSize = (...args) => {
+      const [w, h] = nodeSize(...args);
+      return [h, w];
+    };
+  }
+
+  const result = verticalGraph(hops, options);
+  if (options.horizontal) {
+    result.extent = flip(result.extent);
+    result.traces = result.traces.map(trace => ({
+      ...trace,
+      points: flip(trace.points)
+    }));
+    result.nodes = result.nodes.map(node => ({
+      ...node,
+      x0: node.y0,
+      y0: node.x0,
+      x1: node.y1,
+      y1: node.x1
+    }));
+  }
+  return result;
 }
 
 export default class {
@@ -609,23 +395,14 @@ export default class {
     this._width = 0;
     this._height = 0;
     this._updateRequest = null;
-    this._hops = [];
+    this._traces = [];
     this._nodes = [];
     this._element = document.createElement("div");
     this._element.style.position = "relative";
+    this._element.style.width = "3000px";
+    this._element.style.height = "1000px";
+    this._element.style.display = "flex";
 
-    this._canvas = document.createElement("canvas");
-    this._ctx = this._canvas.getContext("2d");
-    this._resizeHandler = () => {
-      resize(this._canvas, this._ctx, this._width, this._height);
-      this._update();
-    };
-
-    this._element.appendChild(this._canvas);
-    this._ctx = this._canvas.getContext("2d");
-    this._ctx.save();
-    resize(this._canvas, this._ctx, this._width, this._height);
-    window.addEventListener("resize", this._resizeHandler, false);
     this._update();
   }
 
@@ -638,20 +415,11 @@ export default class {
       cancelAnimationFrame(this._updateRequest);
       this._updateRequest = null;
     }
-    this._cleanup();
-    window.removeEventListener("resize", this._resizeHandler, false);
   }
 
-  update(hops) {
-    this._hops = hops;
+  update(traces) {
+    this._traces = traces;
     this._update();
-  }
-
-  _cleanup() {
-    this._nodes.forEach(({ container, unmount }) => {
-      this._element.removeChild(container);
-      unmount();
-    });
   }
 
   _update() {
@@ -663,15 +431,96 @@ export default class {
         return;
       }
       this._updateRequest = null;
-      this._cleanup();
-      [this._width, this._height, this._nodes] = update(
-        this._element,
-        this._canvas,
-        this._ctx,
-        this._width,
-        this._height,
-        this._hops
-      );
+      const { extent, traces, nodes } = tracegraph(this._traces, {
+        horizontal: true,
+        traceSmoothness: 0.5,
+        nodeSize(node) {
+          return node.hops[0].ip || node.hops[0].root ? [30, 30] : [10, 10];
+        },
+        hopDefined(hop) {
+          return hop.ip || hop.root;
+        },
+        hopLevel(hop, index) {
+          return index;
+        },
+        traceWidth(_, index) {
+          return (index === 0 ? 7 : 2.25) + 3;
+        },
+        nodeId(hop, index) {
+          return hop.ip || (hop.root && "root") || `empty-${index}`;
+        }
+      });
+
+      const svg = d3.select(this._element).append("svg");
+
+      const [[x0, y0], [x1, y1]] = extent;
+      svg
+        .attr("viewBox", `${x0} ${y0} ${x1 - x0} ${y1 - y0}`)
+        .attr("width", x1 - x0)
+        .attr("height", y1 - y0);
+
+      const ids = nodes.map(() => genUID());
+
+      const defs = svg
+        .append("defs")
+        .selectAll(".gradient")
+        .data(nodes.map(nodeGradient));
+      const stops = defs
+        .enter()
+        .append("linearGradient")
+        .merge(defs)
+        .attr("id", (_, i) => ids[i].id)
+        .attr("gradientUnits", d => d.gradientUnits)
+        .attr("x1", d => d.x1)
+        .attr("y1", d => d.y1)
+        .attr("x2", d => d.x2)
+        .attr("y2", d => d.y2)
+        .selectAll("stop")
+        .data(d => d.stops);
+      stops
+        .enter()
+        .append("stop")
+        .merge(stops)
+        .attr("offset", d => d.offset)
+        .attr(
+          "stop-color",
+          d => d3.schemeSet2[d.traceIndex % d3.schemeSet2.length]
+        );
+
+      const traceLayer = svg
+        .append("g")
+        .attr("fill", "none")
+        .selectAll("g")
+        .data(traces)
+        .enter()
+        .append("g");
+      traceLayer
+        .filter(segment => segment.defined)
+        .append("path")
+        .attr("d", traceCurve())
+        .attr("stroke-width", d => d.width)
+        .attr("stroke", "white");
+      traceLayer
+        .append("path")
+        .attr("d", traceCurve())
+        .attr("stroke-width", d => d.width - 3)
+        .attr(
+          "stroke",
+          segment => d3.schemeSet2[segment.index % d3.schemeSet2.length]
+        )
+        .attr("stroke-dasharray", segment => (segment.defined ? "" : "4 2"));
+
+      svg
+        .selectAll("circle")
+        .data(nodes)
+        .enter()
+        .append("circle")
+        .attr("fill", "white")
+        .attr("stroke", (_, i) => String(ids[i]))
+        .attr("stroke-width", 2)
+        .attr("r", d => Math.min(d.y1 - d.y0, d.x1 - d.x0) / 2 - 1)
+        .attr("cx", d => (d.x1 + d.x0) / 2)
+        .attr("cy", d => (d.y1 + d.y0) / 2);
     });
   }
 }

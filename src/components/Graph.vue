@@ -7,7 +7,7 @@
 import TraceGraph from "../lib/tracegraph";
 
 export default {
-  props: ["hops"],
+  props: ["traces"],
 
   created() {
     this._graph = null;
@@ -15,7 +15,7 @@ export default {
 
   mounted() {
     this._graph = new TraceGraph();
-    this._graph.update(this.hops);
+    this._graph.update(this.traces);
     this.$refs.root.appendChild(this._graph.element());
   },
 
@@ -25,8 +25,8 @@ export default {
   },
 
   watch: {
-    hops() {
-      this._graph.update(this.hops);
+    traces() {
+      this._graph.update(this.traces);
     }
   }
 };
