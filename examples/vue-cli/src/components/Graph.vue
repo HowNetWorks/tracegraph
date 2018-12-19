@@ -16,25 +16,21 @@ export default {
   props: ["traces"],
 
   mounted() {
-    const { extent, traces, nodes } = tracegraph(this.traces, {
-      horizontal: true,
-      traceSmoothness: 0.5,
-      nodeSize(node) {
+    const graph = tracegraph()
+      .horizontal(true)
+      .traceSmoothness(0.5)
+      .levelMargin(15)
+      .nodeSize(node => {
         return node.hops[0].ip || node.hops[0].root ? [30, 30] : [10, 10];
-      },
-      hopDefined(hop) {
-        return hop.ip || hop.root;
-      },
-      hopLevel(hop, index) {
-        return index;
-      },
-      traceWidth(_, index) {
-        return (index === 0 ? 7 : 2.25) + 3;
-      },
-      nodeId(hop, index) {
+      })
+      .hopDefined(hop => hop.ip || hop.root)
+      .hopLevel((hop, index) => index)
+      .traceWidth((_, index) => (index === 0 ? 10 : 5.25))
+      .nodeId((hop, index) => {
         return hop.ip || (hop.root && "root") || `empty-${index}`;
-      }
-    });
+      });
+
+    const { extent, traces, nodes } = graph(this.traces);
 
     const svg = d3.select(this.$refs.root).append("svg");
 

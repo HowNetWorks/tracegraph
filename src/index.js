@@ -65,10 +65,14 @@ export function genUID() {
 }
 
 function verticalGraph(origTraces, options) {
-  const { traces, levels } = calc(origTraces, options);
+  const horizontal = Boolean(options.horizontal());
+  const levelMargin = options.levelMargin();
+  const traceSmoothness = options.traceSmoothness();
   const traceWidths = origTraces.map((trace, index) => {
     return options.traceWidth(trace, index, origTraces);
   });
+
+  const { traces, levels } = calc(origTraces, options);
 
   const nodeMetrics = new Map();
   levels.forEach(nodes => {
@@ -86,7 +90,7 @@ function verticalGraph(origTraces, options) {
       if (!node.virtual) {
         const [width, height] = options.nodeSize({
           hops: node.hops.map(hop => hop.origHop),
-          horizontal: Boolean(options.horizontal)
+          horizontal: Boolean(horizontal)
         });
         nm.width = width;
         nm.height = height;
@@ -165,8 +169,7 @@ function verticalGraph(origTraces, options) {
       const right = hopMetrics.get(hops[i]);
       const lnm = nodeMetrics.get(leftHop.node);
 
-      const dy =
-        (3 / 2) * (1 - options.traceSmoothness) * (2 * options.levelMargin);
+      const dy = (3 / 2) * (1 - traceSmoothness) * (2 * levelMargin);
       const dx = (3 / 2) * (right.x - left.x);
       const normalLen = Math.sqrt(dx * dx + dy * dy);
 
@@ -211,7 +214,7 @@ function verticalGraph(origTraces, options) {
       height,
       y: totalHeight
     });
-    totalHeight += height + top + 2 * options.levelMargin;
+    totalHeight += height + top + 2 * levelMargin;
   });
 
   const result = {
@@ -266,7 +269,7 @@ function verticalGraph(origTraces, options) {
         const llm = levelMetrics.get(hops[index - 1].level);
         const y = llm.y + llm.top + llm.height + lhm.bottom;
         points.push([lhm.x, y]);
-        points.push([rhm.x, y + 2 * options.levelMargin]);
+        points.push([rhm.x, y + 2 * levelMargin]);
 
         if (index === hops.length - 1) {
           points.push([rhm.x, rlm.y + rlm.top + rnm.y + rnm.height / 2]);
@@ -282,8 +285,8 @@ function verticalGraph(origTraces, options) {
         hops: trace.hops.map(hop => hop.origHop),
         defined: section.defined,
         points: section.points,
-        smoothness: options.traceSmoothness,
-        horizontal: Boolean(options.horizontal)
+        smoothness: traceSmoothness,
+        horizontal: horizontal
       });
     });
   });
@@ -324,10 +327,10 @@ function verticalGraph(origTraces, options) {
         y0,
         x1,
         y1,
+        horizontal,
         hops: node.hops.map(hop => hop.origHop),
         traceIndexes: node.hops.map(hop => hop.traceIndex),
-        traceStops,
-        horizontal: Boolean(options.horizontal)
+        traceStops
       });
     });
   });
@@ -340,40 +343,54 @@ function flip(points) {
   return points.map(([x, y]) => [y, x]);
 }
 
-export function tracegraph(traces, _options) {
+export function tracegraph() {
   const options = {
     horizontal: false,
     traceWidth: () => 2,
-    nodeSize: () => [20, 20],
-    nodeId: (hop, hopIndex, trace, traceIndex) => `${traceIndex}-${hopIndex}`,
-    hopDefined: () => true,
-    levelMargin: 20,
     traceSmoothness: 0.33,
-    ..._options
+    levelMargin: 20,
+    hopLevel: (hop, index) => index,
+    hopDefined: () => true,
+    nodeSize: () => [20, 20],
+    nodeId: (hop, hopIndex, trace, traceIndex) => `${traceIndex}-${hopIndex}`
   };
 
-  if (options.horizontal) {
-    const nodeSize = options.nodeSize;
-    options.nodeSize = (...args) => {
-      const [w, h] = nodeSize(...args);
-      return [h, w];
-    };
+  function graph(traces) {
+    if (options.horizontal) {
+      const nodeSize = options.nodeSize;
+      options.nodeSize = (...args) => {
+        const [w, h] = nodeSize(...args);
+        return [h, w];
+      };
+    }
+
+    const result = verticalGraph(traces, options);
+    if (options.horizontal) {
+      result.extent = flip(result.extent);
+      result.traces = result.traces.map(trace => ({
+        ...trace,
+        points: flip(trace.points)
+      }));
+      result.nodes = result.nodes.map(node => ({
+        ...node,
+        x0: node.y0,
+        y0: node.x0,
+        x1: node.y1,
+        y1: node.x1
+      }));
+    }
+    return result;
   }
 
-  const result = verticalGraph(traces, options);
-  if (options.horizontal) {
-    result.extent = flip(result.extent);
-    result.traces = result.traces.map(trace => ({
-      ...trace,
-      points: flip(trace.points)
-    }));
-    result.nodes = result.nodes.map(node => ({
-      ...node,
-      x0: node.y0,
-      y0: node.x0,
-      x1: node.y1,
-      y1: node.x1
-    }));
-  }
-  return result;
+  Object.keys(options).forEach(key => {
+    graph[key] = function(value) {
+      if (arguments.length === 0) {
+        return options[key];
+      }
+      options[key] = typeof value === "function" ? value : () => value;
+      return graph;
+    };
+    graph[key](options[key]);
+  });
+  return graph;
 }
