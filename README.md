@@ -8,7 +8,7 @@
 $ npm install @hownetworks/tracegraph
 ```
 
-# Usage
+## Usage
 
 ```js
 import { tracegraph } from "@hownetworks/tracegraph";
