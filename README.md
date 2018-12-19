@@ -20,45 +20,89 @@ import { tracegraph } from "@hownetworks/tracegraph";
 const graph = tracegraph();
 ```
 
-*graph(traces)*
+*graph(traceData)*
+
+```js
+const { traces, nodes } = graph(traceData);
+```
+
+*traces* is an array where each item is a defined/undefined segment is a trace and has the following properties:
+
+ * *trace*.index - the index of the trace
+ * *trace*.width - the width of the trace
+ * *trace*.hops - the hops belonging to the trace
+ * *trace*.defined - whether the segment is defined or not
+ * *trace*.points - points for drawing the segment
+ * *trace*.smoothness - the layout's smoothness value
+ * *trace*.horizontal - whether the layout is horizontal or vertical
+
+*nodes* is an array where each item has the following properties:
+
+ * *node*.x0, *node*.y0, *node*.x1, *node*.y1 - the coordinates of the top-left and bottom-right corner of the node
+ * *node*.horizontal - whether the layout is horizontal or vertical
+ * *node*.hops - an array of hops that belong to the node
+ * *node*.traceIndexes - an array of indexes of the traces that are connected to the node
+ * *node*.traceStops - used for creating (optional) linear gradient for the node to match the positions of its connected traces
 
 *graph*.**horizontal**([*horizontal*])
 
-If *horizontal* is defined then its value is used to define whether the layout is either horizontal or vertical. If *horizontal* is a function, then it's evaluated (without arguments) on every layout and the result is used. Otherwise the value is used as-is.
+Defines whether the layout is either horizontal or vertical. Evaluated without arguments for each layout. 
 
-If *horizontal* is not specified then return the current. The default is `false` (the layout is vertical).
+Default: `false` (the layout is vertical)
 
 *graph*.**traceWidth**([*width*])
 
-If *width* is specified then its value is used as the trace width. If *width* is a function then it's evaluated for each trace to define the trace's width, with `trace`, `traceIndex`, and `traces` as the arguments. Otherwise the value is just used as-is.
+Defines the width of a trace. Evaluated for each trace with the arguments `trace`, `traceIndex`, and `traces`.
 
-If *width* is not specified then return the current trace width value or function. The default is `1`.
+Default: `1`
 
-*graph*.**traceSmoothness**()
+*graph*.**traceSmoothness**([*smoothness*])
 
-The default is `0.5`.
+A coefficient used in calculating the trace curves. The value should be between 0 and 1 (inclusive), a larger value generally meaning a more round appearance for the curves. Evaluated without arguments for each layout.
 
-*graph*.**hopDefined**()
+Default: `0.5`
 
-The default is `true`.
+*graph*.**hopDefined**([*defined*])
 
-*graph*.**hopLevel**()
+Tark traces a hop as either defined or undefined. Evaluated for each hop, with `hop`, `hopIndex`, `trace`, `traceIndex`, and `traces` as the arguments.
 
-The default is the following function:
+Default: `true`
+
+*graph*.**hopLevel**([*level*])
+
+A hop's position (depth, level) in the trace. Evaluated for each hop, with `hop`, `hopIndex`, `trace`, `traceIndex`, and `traces` as the arguments.
+
+Default:
 
 ```js
-function hopLevel(hop, hopIndex, trace, traceIndex, traces) {
+function hopLevel(hop, hopIndex) {
   return hopIndex;
 }
 ```
 
-*graph*.**levelMargin**()
+*graph*.**nodeSize**([*size*])
 
-The default is `10`.
+A node's minimum size as `[width, height]`, used for layout. The final size of the node may be larger. Evaluated without arguments for each output node, with `node` as the argument. `node` won't have its position data such as `node.x0` set, as the layout won't be finished at the time of the evaluation.
 
-*graph*.**nodeSize**()
+Default: `[10, 10]`
 
-*graph*.**nodeId**()
+*graph*.**nodeId**([*id*])
+
+A string identifier for the node a hop belongs to. Evaluated for each hop, with `hop`, `hopIndex`, `trace`, `traceIndex`, and `traces` as the arguments.
+
+Default:
+
+```js
+function nodeId(hop, hopIndex, trace, traceIndex) {
+  return `${traceIndex}-${hopIndex}`;
+}
+```
+
+*graph*.**levelMargin**([*margin*])
+
+Margin size around each level of nodes. Evaluated without arguments for each layout. 
+
+Default: `10`
 
 ## Helper Functions
 
