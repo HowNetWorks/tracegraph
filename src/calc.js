@@ -1,4 +1,4 @@
-import * as util from "./util";
+import { sorted, permutations } from "./util";
 
 function calcLevel(node, cache) {
   if (cache.has(node)) {
@@ -47,7 +47,7 @@ function nodeify(_traces) {
   });
 
   traces.forEach(trace => {
-    const hops = util.sorted(trace.hops, "level");
+    const hops = sorted(trace.hops, "level");
     for (let i = 1; i < hops.length; i++) {
       const left = hops[i - 1];
       const right = hops[i];
@@ -70,7 +70,7 @@ function virtualize(traces) {
   return traces.map(trace => {
     const newHops = [];
 
-    const hops = util.sorted(trace.hops, "level");
+    const hops = sorted(trace.hops, "level");
     hops.forEach((hop, index) => {
       if (index > 0) {
         const prev = hops[index - 1];
@@ -99,7 +99,7 @@ function uniques(hops) {
   // Create multiple hops if one trace contains the same grouping key several times
 
   const counts = new Map();
-  return util.sorted(hops, "level").map(hop => {
+  return sorted(hops, "level").map(hop => {
     const nodeId = hop.nodeId;
     const count = counts.get(nodeId) || 0;
     counts.set(nodeId, count + 1);
@@ -142,11 +142,11 @@ function rankedNodes(nodes, traceRanks) {
     });
     nodeRanks.set(node, rank);
   });
-  return util.sorted(nodes, node => nodeRanks.get(node));
+  return sorted(nodes, node => nodeRanks.get(node));
 }
 
 function rankedHops(hops, traceRanks) {
-  return util.sorted(hops, hop => traceRanks[hop.traceIndex]);
+  return sorted(hops, hop => traceRanks[hop.traceIndex]);
 }
 
 function countCrossings(traces, levels, traceRanks) {
@@ -190,13 +190,13 @@ export default function(origTraces, options) {
   });
   const traces = nodeify(virtualize(nodeify(enrichedTraces))).map(trace => ({
     ...trace,
-    hops: util.sorted(trace.hops, "level")
+    hops: sorted(trace.hops, "level")
   }));
   const levels = collectLevels(traces);
 
   let bestTraceRanks = [];
   let minCrossings = Infinity;
-  util.permutations(traces.map((_, index) => index), traceRanks => {
+  permutations(traces.map((_, index) => index), traceRanks => {
     const crossings = countCrossings(traces, levels, traceRanks);
     if (crossings < minCrossings) {
       minCrossings = crossings;

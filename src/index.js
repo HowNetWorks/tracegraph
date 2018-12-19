@@ -1,7 +1,7 @@
-import * as util from "./util";
+import { sorted } from "./util";
 import calc from "./calc";
 
-function traceCurve() {
+export function traceCurve() {
   return function({ points, horizontal, smoothness }) {
     return points
       .map(([x1, y1], index) => {
@@ -17,7 +17,7 @@ function traceCurve() {
   };
 }
 
-function nodeGradient(node) {
+export function nodeGradient(node) {
   const { horizontal, traceStops } = node;
 
   const start = Math.min(...traceStops.map(s => s.start));
@@ -43,11 +43,11 @@ function nodeGradient(node) {
     y1: horizontal ? start : 0,
     x2: horizontal ? 0 : end,
     y2: horizontal ? end : 0,
-    stops: util.sorted(stops, "offset")
+    stops: sorted(stops, "offset")
   };
 }
 
-function genUID() {
+export function genUID() {
   const base = window.location.href.replace(/#.*/, "");
 
   for (;;) {
@@ -100,7 +100,7 @@ function verticalGraph(origTraces, options) {
   nodeMetrics.forEach(nm => {
     maxNodeWidth = Math.max(nm.width, maxNodeWidth);
   });
-  const sortedTraceWidths = util.sorted(traceWidths);
+  const sortedTraceWidths = sorted(traceWidths);
   levels.forEach(nodes => {
     let width = maxNodeWidth;
     if (nodes.length >= 2) {
@@ -340,7 +340,7 @@ function flip(points) {
   return points.map(([x, y]) => [y, x]);
 }
 
-export default function(traces, _options) {
+export function tracegraph(traces, _options) {
   const options = {
     horizontal: false,
     traceWidth: () => 2,
