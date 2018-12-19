@@ -1,7 +1,7 @@
 import * as util from "./util";
 import calc from "./calc";
 
-export function traceCurve() {
+function traceCurve() {
   return function({ points, horizontal, smoothness }) {
     return points
       .map(([x1, y1], index) => {
@@ -17,7 +17,7 @@ export function traceCurve() {
   };
 }
 
-export function nodeGradient(node) {
+function nodeGradient(node) {
   const { horizontal, traceStops } = node;
 
   const start = Math.min(...traceStops.map(s => s.start));
@@ -47,16 +47,17 @@ export function nodeGradient(node) {
   };
 }
 
-export function genUID() {
+function genUID() {
   const base = window.location.href.replace(/#.*/, "");
 
   for (;;) {
     const id = `uid-${Math.random()}`;
     if (!document.getElementById(id)) {
+      const attr = `url(${base}#${id})`;
       return {
         id,
         toString() {
-          return `url(${base}#${id})`;
+          return attr;
         }
       };
     }
@@ -339,7 +340,7 @@ function flip(points) {
   return points.map(([x, y]) => [y, x]);
 }
 
-export function tracegraph(traces, _options) {
+export default function(traces, _options) {
   const options = {
     horizontal: false,
     traceWidth: () => 2,
