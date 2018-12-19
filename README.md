@@ -26,6 +26,10 @@ const graph = tracegraph();
 const { traces, nodes } = graph(traceData);
 ```
 
+*traceData* should be an array where each item has the following properties:
+
+ * *trace*.hops - an array of hops that belong to the trace
+
 *traces* is an array where each item is a defined/undefined segment is a trace and has the following properties:
 
  * *trace*.index - the index of the trace
