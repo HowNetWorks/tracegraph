@@ -383,7 +383,7 @@ export function tracegraph() {
   }
 
   const options = {};
-  Object.keys(options).forEach(key => {
+  Object.keys(values).forEach(key => {
     graph[key] = function(value) {
       if (arguments.length === 0) {
         return values[key];
