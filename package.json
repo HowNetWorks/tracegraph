@@ -2,7 +2,7 @@
   "name": "@hownetworks/tracegraph",
   "version": "0.1.0",
   "description": "Graph traces",
-  "main": "dist/index.js",
+  "main": "dist/index.umd.js",
   "module": "dist/index.mjs",
   "source": "src/index.js",
   "sideEffects": false,
@@ -10,7 +10,7 @@
   "repository": "HowNetWorks/tracegraph",
   "license": "MIT",
   "scripts": {
-    "build": "rm -rf dist && microbundle --format es,cjs",
+    "build": "rm -rf dist && microbundle --format es,umd",
     "prepublishOnly": "yarn run build"
   },
   "devDependencies": {
