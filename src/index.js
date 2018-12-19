@@ -344,14 +344,14 @@ function flip(points) {
 }
 
 export function tracegraph() {
-  const options = {
+  const values = {
     horizontal: false,
-    traceWidth: () => 2,
-    traceSmoothness: 0.33,
-    levelMargin: 20,
+    traceWidth: () => 1,
+    traceSmoothness: 0.5,
+    levelMargin: 10,
     hopLevel: (hop, index) => index,
     hopDefined: () => true,
-    nodeSize: () => [20, 20],
+    nodeSize: () => [10, 10],
     nodeId: (hop, hopIndex, trace, traceIndex) => `${traceIndex}-${hopIndex}`
   };
 
@@ -382,15 +382,17 @@ export function tracegraph() {
     return result;
   }
 
+  const options = {};
   Object.keys(options).forEach(key => {
     graph[key] = function(value) {
       if (arguments.length === 0) {
-        return options[key];
+        return values[key];
       }
+      values[key] = value;
       options[key] = typeof value === "function" ? value : () => value;
       return graph;
     };
-    graph[key](options[key]);
+    graph[key](values[key]);
   });
   return graph;
 }
