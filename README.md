@@ -44,9 +44,46 @@ import { traceCurve, nodeGradient, genUID } from "@hownetworks/tracegraph";
 
 **traceCurve**(traceSegment)
 
-**nodeGradient**(*node*)
+```js
+svg.selectAll(".trace")
+  .data(traces)
+  .enter().append("path")
+    .attr("class", "trace")
+    .attr("d", traceCurve())
+    .attr("stroke-width", d => d.width)
+    .attr("stroke", "red");
+```
 
-**genUID**()
+**nodeGradient**(*node*) and **genUID**()
+
+```js
+const ids = nodes.map(() => genUID());
+
+svg.append("defs")
+  .selectAll("linearGradient")
+  .data(nodes.map(nodeGradient))
+  .enter().append("linearGradient")
+    .attr("id", (_, i) => ids[i].id)
+    .attr("gradientUnits", d => d.gradientUnits)
+    .attr("x1", d => d.x1)
+    .attr("y1", d => d.y1)
+    .attr("x2", d => d.x2)
+    .attr("y2", d => d.y2)
+  .selectAll("stop")
+  .data(d => d.stops);
+  .enter().append("stop")
+    .attr("offset", d => d.offset)
+    .attr("stop-color", d => ["red", "green", "blue"][d.traceIndex % 3]);
+  
+svg.selectAll("circle")
+  .data(nodes)
+  .enter().append("circle")
+    .attr("fill", "white")
+    .attr("stroke", (_, i) => String(ids[i]))
+    .attr("r", d => 10)
+    .attr("cx", d => (d.x1 + d.x0) / 2)
+    .attr("cy", d => (d.y1 + d.y0) / 2);
+```
 
 ## License
 
