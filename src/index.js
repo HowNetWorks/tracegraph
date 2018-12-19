@@ -1,36 +1,23 @@
-import * as d3 from "d3";
-import util from "./util";
+import * as util from "./util";
 import calc from "./calc";
 
-function traceCurve() {
+export function traceCurve() {
   return function({ points, horizontal, smoothness }) {
-    const ctx = d3.path();
-
-    const len = points.length;
-    for (let index = 0; index < len; index++) {
-      const [x, y] = points[index];
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
+    return points
+      .map(([x1, y1], index) => {
+        if (index === 0) {
+          return `M ${x1} ${y1}`;
+        }
         const [x0, y0] = points[index - 1];
-        const dx = horizontal ? x - x0 : 0;
-        const dy = horizontal ? 0 : y - y0;
-        ctx.bezierCurveTo(
-          x0 + dx * smoothness,
-          y0 + dy * smoothness,
-          x - dx * smoothness,
-          y - dy * smoothness,
-          x,
-          y
-        );
-      }
-    }
-
-    return "" + ctx;
+        const dx = smoothness * (horizontal ? x1 - x0 : 0);
+        const dy = smoothness * (horizontal ? 0 : y1 - y0);
+        return `C ${x0 + dx} ${y0 + dy},  ${x1 - dx} ${y1 - dy}, ${x1} ${y1}`;
+      })
+      .join(" ");
   };
 }
 
-function nodeGradient(node) {
+export function nodeGradient(node) {
   const { horizontal, traceStops } = node;
 
   const start = Math.min(...traceStops.map(s => s.start));
@@ -60,7 +47,7 @@ function nodeGradient(node) {
   };
 }
 
-function genUID() {
+export function genUID() {
   const base = window.location.href.replace(/#.*/, "");
 
   for (;;) {
@@ -352,7 +339,7 @@ function flip(points) {
   return points.map(([x, y]) => [y, x]);
 }
 
-function tracegraph(hops, _options) {
+export function tracegraph(traces, _options) {
   const options = {
     horizontal: false,
     traceWidth: () => 2,
@@ -372,7 +359,7 @@ function tracegraph(hops, _options) {
     };
   }
 
-  const result = verticalGraph(hops, options);
+  const result = verticalGraph(traces, options);
   if (options.horizontal) {
     result.extent = flip(result.extent);
     result.traces = result.traces.map(trace => ({
@@ -388,139 +375,4 @@ function tracegraph(hops, _options) {
     }));
   }
   return result;
-}
-
-export default class {
-  constructor() {
-    this._width = 0;
-    this._height = 0;
-    this._updateRequest = null;
-    this._traces = [];
-    this._nodes = [];
-    this._element = document.createElement("div");
-    this._element.style.position = "relative";
-    this._element.style.width = "3000px";
-    this._element.style.height = "1000px";
-    this._element.style.display = "flex";
-
-    this._update();
-  }
-
-  element() {
-    return this._element;
-  }
-
-  destroy() {
-    if (this._updateRequest !== null) {
-      cancelAnimationFrame(this._updateRequest);
-      this._updateRequest = null;
-    }
-  }
-
-  update(traces) {
-    this._traces = traces;
-    this._update();
-  }
-
-  _update() {
-    if (this._updateRequest !== null) {
-      return;
-    }
-    this._updateRequest = requestAnimationFrame(() => {
-      if (this._updateRequest === null) {
-        return;
-      }
-      this._updateRequest = null;
-      const { extent, traces, nodes } = tracegraph(this._traces, {
-        horizontal: true,
-        traceSmoothness: 0.5,
-        nodeSize(node) {
-          return node.hops[0].ip || node.hops[0].root ? [30, 30] : [10, 10];
-        },
-        hopDefined(hop) {
-          return hop.ip || hop.root;
-        },
-        hopLevel(hop, index) {
-          return index;
-        },
-        traceWidth(_, index) {
-          return (index === 0 ? 7 : 2.25) + 3;
-        },
-        nodeId(hop, index) {
-          return hop.ip || (hop.root && "root") || `empty-${index}`;
-        }
-      });
-
-      const svg = d3.select(this._element).append("svg");
-
-      const [[x0, y0], [x1, y1]] = extent;
-      svg
-        .attr("viewBox", `${x0} ${y0} ${x1 - x0} ${y1 - y0}`)
-        .attr("width", x1 - x0)
-        .attr("height", y1 - y0);
-
-      const ids = nodes.map(() => genUID());
-
-      const defs = svg
-        .append("defs")
-        .selectAll(".gradient")
-        .data(nodes.map(nodeGradient));
-      const stops = defs
-        .enter()
-        .append("linearGradient")
-        .merge(defs)
-        .attr("id", (_, i) => ids[i].id)
-        .attr("gradientUnits", d => d.gradientUnits)
-        .attr("x1", d => d.x1)
-        .attr("y1", d => d.y1)
-        .attr("x2", d => d.x2)
-        .attr("y2", d => d.y2)
-        .selectAll("stop")
-        .data(d => d.stops);
-      stops
-        .enter()
-        .append("stop")
-        .merge(stops)
-        .attr("offset", d => d.offset)
-        .attr(
-          "stop-color",
-          d => d3.schemeSet2[d.traceIndex % d3.schemeSet2.length]
-        );
-
-      const traceLayer = svg
-        .append("g")
-        .attr("fill", "none")
-        .selectAll("g")
-        .data(traces)
-        .enter()
-        .append("g");
-      traceLayer
-        .filter(segment => segment.defined)
-        .append("path")
-        .attr("d", traceCurve())
-        .attr("stroke-width", d => d.width)
-        .attr("stroke", "white");
-      traceLayer
-        .append("path")
-        .attr("d", traceCurve())
-        .attr("stroke-width", d => d.width - 3)
-        .attr(
-          "stroke",
-          segment => d3.schemeSet2[segment.index % d3.schemeSet2.length]
-        )
-        .attr("stroke-dasharray", segment => (segment.defined ? "" : "4 2"));
-
-      svg
-        .selectAll("circle")
-        .data(nodes)
-        .enter()
-        .append("circle")
-        .attr("fill", "white")
-        .attr("stroke", (_, i) => String(ids[i]))
-        .attr("stroke-width", 2)
-        .attr("r", d => Math.min(d.y1 - d.y0, d.x1 - d.x0) / 2 - 1)
-        .attr("cx", d => (d.x1 + d.x0) / 2)
-        .attr("cy", d => (d.y1 + d.y0) / 2);
-    });
-  }
 }

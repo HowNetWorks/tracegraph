@@ -2,14 +2,9 @@
   <graph :traces="traces"></graph>
 </template>
 
-<style src="bulma/css/bulma.min.css"></style>
-
 <script>
 import Vue from "vue";
 import Graph from "./components/Graph.vue";
-import Hop from "./components/Hop.vue";
-
-const HopComponent = Vue.extend(Hop);
 
 export default {
   data() {
