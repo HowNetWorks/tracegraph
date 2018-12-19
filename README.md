@@ -20,17 +20,41 @@ import { tracegraph } from "@hownetworks/tracegraph";
 const graph = tracegraph();
 ```
 
-*graph*.**horizontal**()
+*graph(traces)*
 
-*graph*.**traceWidth**()
+*graph*.**horizontal**([*horizontal*])
+
+If *horizontal* is defined then its value is used to define whether the layout is either horizontal or vertical. If *horizontal* is a function, then it's evaluated (without arguments) on every layout and the result is used. Otherwise the value is used as-is.
+
+If *horizontal* is not specified then return the current. The default is `false` (the layout is vertical).
+
+*graph*.**traceWidth**([*width*])
+
+If *width* is specified then its value is used as the trace width. If *width* is a function then it's evaluated for each trace to define the trace's width, with `trace`, `traceIndex`, and `traces` as the arguments. Otherwise the value is just used as-is.
+
+If *width* is not specified then return the current trace width value or function. The default is `1`.
 
 *graph*.**traceSmoothness**()
 
+The default is `0.5`.
+
 *graph*.**hopDefined**()
+
+The default is `true`.
 
 *graph*.**hopLevel**()
 
+The default is the following function:
+
+```js
+function hopLevel(hop, hopIndex, trace, traceIndex, traces) {
+  return hopIndex;
+}
+```
+
 *graph*.**levelMargin**()
+
+The default is `10`.
 
 *graph*.**nodeSize**()
 
