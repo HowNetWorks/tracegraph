@@ -10,10 +10,15 @@
   "repository": "HowNetWorks/tracegraph",
   "license": "MIT",
   "scripts": {
+    "lint": "eslint --max-warnings 0 --ignore-path .gitignore src",
     "build": "rm -rf dist && microbundle --format es,umd",
     "prepublishOnly": "yarn run build"
   },
   "devDependencies": {
-    "microbundle": "^0.9.0"
+    "eslint": "^5.10.0",
+    "eslint-config-prettier": "^3.3.0",
+    "eslint-plugin-prettier": "^3.0.0",
+    "microbundle": "^0.9.0",
+    "prettier": "^1.15.3"
   }
 }
