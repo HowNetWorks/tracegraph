@@ -35,13 +35,7 @@ export class Rect {
   get height() {
     return this.bottom - this.top;
   }
-  expanded(left = 0, right = 0, top = 0, bottom = 0) {
-    if (arguments.length === 1) {
-      right = top = bottom = left;
-    } else if (arguments.length === 2) {
-      top = bottom = right;
-      right = left;
-    }
+  expanded(left, top = left, right = left, bottom = top) {
     return new Rect(
       this.left - left,
       this.top - top,
