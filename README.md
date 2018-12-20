@@ -35,7 +35,7 @@ _traces_ should be an array where each item has the following properties:
 _layout_.bounds is the bounding box of the layout, returned as a [DOMRect](https://developer.mozilla.org/en-US/docs/Web/API/DOMRect)-like object with some extra convenience properties:
 
 - _bounds_.cx, _bounds_.cy - the coordinates for the center point of the box
-- _bounds_.expanded(_left_, [_top=left_, [_right=left_, _bottom=top_]]) - a function that returns a new box that has been expanded by the given amount(s)
+- _bounds_.expanded(_left_, [_top_=left, [_right_=left, _bottom_=top]]) - a function that returns a new box that has been expanded by the given amount(s)
 
 _layout_.traces is an array where each item is a defined/undefined segment is a trace and has the following properties:
 
