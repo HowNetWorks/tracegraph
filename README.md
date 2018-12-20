@@ -2,6 +2,8 @@
 
 **tracegraph** is a JavaScript library for plotting graphs of traceroute or similar data.
 
+Check out the small [Observable HQ notebook](https://beta.observablehq.com/@jviide/visualizing-traceroutes-feat-d3-js) demonstrating how it can be used.
+
 ## Installation
 
 ```sh
