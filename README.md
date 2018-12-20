@@ -22,7 +22,7 @@ import { tracegraph } from "@hownetworks/tracegraph";
 const graph = tracegraph();
 ```
 
-_graph(traceData)_
+_graph(traces)_
 
 ```js
 const layout = graph(traces);
