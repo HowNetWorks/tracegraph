@@ -123,28 +123,30 @@ import { traceCurve, nodeGradient, genUID } from "@hownetworks/tracegraph";
 
 **traceCurve**(traceSegment)
 
+Return a string suitable for plotting a layouted trace segment.
+
 ```js
 svg
   .selectAll(".trace")
-  .data(traces)
+  .data(layout.traces)
   .enter()
   .append("path")
   .attr("class", "trace")
-  .attr("d", traceCurve())
-  .attr("stroke-width", d => d.width)
-  .attr("stroke", "red");
+  .attr("d", traceCurve());
 ```
 
 **nodeGradient**(_node_) and **genUID**()
+
+**nodeGradient** is a helper method for coloring nodes based on the traces that go through them. **genUID** can be used to generate the ids for the gradients.
 
 ```js
 const ids = nodes.map(() => genUID());
 
 svg.append("defs")
   .selectAll("linearGradient")
-  .data(nodes.map(nodeGradient))
+  .data(layout.nodes.map(nodeGradient))
   .enter().append("linearGradient")
-    .attr("id", (_, i) => ids[i].id)
+    .attr("id", (d, i) => ids[i].id)
     .attr("gradientUnits", d => d.gradientUnits)
     .attr("x1", d => d.x1)
     .attr("y1", d => d.y1)
@@ -157,10 +159,10 @@ svg.append("defs")
     .attr("stop-color", d => ["red", "green", "blue"][d.traceIndex % 3]);
 
 svg.selectAll("circle")
-  .data(nodes)
+  .data(layout.nodes)
   .enter().append("circle")
     .attr("fill", "white")
-    .attr("stroke", (_, i) => String(ids[i]))
+    .attr("stroke", (d, i) => ids[i])
     .attr("r", d => 10)
     .attr("cx", d => d.bounds.cx)
     .attr("cy", d => d.bounds.cy);
