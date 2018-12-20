@@ -1,4 +1,5 @@
 import { sorted } from "./util";
+import { Rect, flippedRect } from "./rect";
 import calc from "./calc";
 
 export function traceCurve() {
@@ -220,7 +221,7 @@ function verticalGraph(origTraces, options) {
   const result = {
     nodes: [],
     traces: [],
-    extent: null
+    bounds: null
   };
 
   traces.forEach((trace, traceIndex) => {
@@ -323,10 +324,7 @@ function verticalGraph(origTraces, options) {
         };
       });
       result.nodes.push({
-        x0,
-        y0,
-        x1,
-        y1,
+        bounds: new Rect(x0, y0, x1, y1),
         horizontal,
         hops: node.hops.map(hop => hop.origHop),
         traceIndexes: node.hops.map(hop => hop.traceIndex),
@@ -335,12 +333,8 @@ function verticalGraph(origTraces, options) {
     });
   });
 
-  result.extent = [[left, top], [right, bottom]];
+  result.bounds = new Rect(left, top, right, bottom);
   return result;
-}
-
-function flip(points) {
-  return points.map(([x, y]) => [y, x]);
 }
 
 export function tracegraph() {
@@ -366,21 +360,20 @@ export function tracegraph() {
     }
 
     const result = verticalGraph(traces, options);
-    if (horizontal) {
-      result.extent = flip(result.extent);
-      result.traces = result.traces.map(trace => ({
-        ...trace,
-        points: flip(trace.points)
-      }));
-      result.nodes = result.nodes.map(node => ({
-        ...node,
-        x0: node.y0,
-        y0: node.x0,
-        x1: node.y1,
-        y1: node.x1
-      }));
+    if (!horizontal) {
+      return result;
     }
-    return result;
+    return {
+      bounds: flippedRect(result.bounds),
+      traces: result.traces.map(trace => ({
+        ...trace,
+        points: trace.points.map(([x, y]) => [y, x])
+      })),
+      nodes: result.nodes.map(node => ({
+        ...node,
+        bounds: flippedRect(node.bounds)
+      }))
+    };
   }
 
   const options = {};

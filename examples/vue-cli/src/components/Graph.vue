@@ -30,18 +30,15 @@ export default {
         return hop.ip || (hop.root && "root") || `empty-${index}`;
       });
 
-    const { extent, traces, nodes } = graph(this.traces);
-
+    const { bounds, traces, nodes } = graph(this.traces);
     const svg = d3.select(this.$refs.root).append("svg");
-
-    const [[x0, y0], [x1, y1]] = extent;
+    const vb = bounds.expanded(1);
     svg
-      .attr("viewBox", `${x0} ${y0} ${x1 - x0} ${y1 - y0}`)
-      .attr("width", x1 - x0)
-      .attr("height", y1 - y0);
+      .attr("viewBox", `${vb.x} ${vb.y} ${vb.width} ${vb.height}`)
+      .attr("width", vb.width)
+      .attr("height", vb.height);
 
     const ids = nodes.map(() => genUID());
-
     const defs = svg
       .append("defs")
       .selectAll(".gradient")
@@ -99,9 +96,9 @@ export default {
       .attr("fill", "white")
       .attr("stroke", (_, i) => String(ids[i]))
       .attr("stroke-width", 2)
-      .attr("r", d => Math.min(d.y1 - d.y0, d.x1 - d.x0) / 2 - 1)
-      .attr("cx", d => (d.x1 + d.x0) / 2)
-      .attr("cy", d => (d.y1 + d.y0) / 2);
+      .attr("r", ({ bounds }) => Math.min(bounds.width, bounds.height) / 2)
+      .attr("cx", ({ bounds }) => bounds.cx)
+      .attr("cy", ({ bounds }) => bounds.cy);
   }
 };
 </script>
