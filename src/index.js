@@ -356,7 +356,8 @@ export function tracegraph() {
   };
 
   function graph(traces) {
-    if (options.horizontal) {
+    const horizontal = options.horizontal();
+    if (horizontal) {
       const nodeSize = options.nodeSize;
       options.nodeSize = (...args) => {
         const [w, h] = nodeSize(...args);
@@ -365,7 +366,7 @@ export function tracegraph() {
     }
 
     const result = verticalGraph(traces, options);
-    if (options.horizontal) {
+    if (horizontal) {
       result.extent = flip(result.extent);
       result.traces = result.traces.map(trace => ({
         ...trace,
